@@ -38,7 +38,7 @@ from telegram.ext import (Application, CallbackQueryHandler, CommandHandler,
 def _ids(s):
     return [int(x) for x in re.split(r"[,\s]+", s or "") if x.strip().lstrip("-").isdigit()]
 
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8439911839:AAFoB40vsbRST5BKz1Y0CLecb2mu61nDDvU")            # أو: BOT_TOKEN = "123456:ABC..."
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8439911839:AAHTE-26QrSGB6hOqMUegne5pIY7kc1xLzM")            # أو: BOT_TOKEN = "123456:ABC..."
 ADMIN_IDS = [
     # 123456789,      ← اكتب أيدي حسابك هنا (أو استخدم متغير البيئة ADMIN_IDS)
 ] + _ids(os.getenv("ADMIN_IDS", "8950382997"))
