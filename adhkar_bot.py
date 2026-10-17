@@ -5,10 +5,10 @@ from telethon.sessions import StringSession
 from telethon.errors import SessionPasswordNeededError
 
 # --- الإعدادات (ضع بياناتك هنا) ---
-API_ID = 8615971361             # ضع API_ID
+API_ID = '35980161'             # ضع API_ID
 API_HASH = 'd879538c1b65ee6aa57ac3b4ce4b63d3'     # ضع API_HASH
 BOT_TOKEN = '8615971361:AAHI51Wd-fj5xKcUwbqyJxbgA7CuuSjebIY'   # ضع توكن البوت
-ADMIN_ID = 8718973896         # ضع ايديك (رقمك) هنا لتتحدث مع البوت
+ADMIN_ID = '8718973896'         # ضع ايديك (رقمك) هنا لتتحدث مع البوت
 
 bot = TelegramClient('bot_manager', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
 
