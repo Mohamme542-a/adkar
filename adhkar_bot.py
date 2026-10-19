@@ -19,7 +19,7 @@ from telethon.errors import SessionPasswordNeededError
 # --- الإعدادات المباشرة ---
 API_ID = 35980161
 API_HASH = 'd879538c1b65ee6aa57ac3b4ce4b63d3'
-BOT_TOKEN = '8615971361:AAHI51Wd-fj5xKcUwbqyJxbgA7CuuSjebIY'
+BOT_TOKEN = '8615971361:AAF14JA9htDq1H1bfGx1915AUg18BIaLGXk'
 ADMIN_ID = 8718973896
 
 DB_FILE = 'sessions.json'
